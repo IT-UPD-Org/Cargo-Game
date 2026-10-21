@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b2a4a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Xếp hàng lên tàu</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="bg"></div>
+
+  <main id="app">
+    <header id="hud">
+      <div class="stat">
+        <span class="label">Điểm</span>
+        <span id="score" class="value">0</span>
+      </div>
+      <div class="stat">
+        <span class="label">Hàng</span>
+        <span id="lines" class="value">0</span>
+      </div>
+      <div class="stat">
+        <span class="label">Cấp</span>
+        <span id="level" class="value">1</span>
+      </div>
+      <div class="stat">
+        <span class="label">Mạng</span>
+        <span id="lives" class="value hearts"></span>
+      </div>
+      <div class="stat next">
+        <span class="label">Tiếp</span>
+        <canvas id="next" width="80" height="80"></canvas>
+      </div>
+    </header>
+
+    <section id="stage">
+      <div class="ship-bridge" aria-hidden="true"><div class="mast"></div><div class="bridge-windows"></div><div class="bridge-deck"></div></div>
+      <canvas id="board"></canvas>
+    </section>
+
+    <nav id="controls">
+      <button class="ctl" data-action="left" aria-label="Sang trái">◀</button>
+      <button class="ctl" data-action="down" aria-label="Xuống một hàng">▼</button>
+      <button class="ctl" data-action="rotate" aria-label="Xoay">⟳</button>
+      <button class="ctl" data-action="right" aria-label="Sang phải">▶</button>
+    </nav>
+  </main>
+
+  <div id="overlay" class="show">
+    <div class="panel">
+      <h1 id="ovTitle">Xếp hàng lên tàu</h1>
+      <div id="ovBody">
+        <ul class="help">
+          <li>Chạm để xoay · Kéo để di chuyển</li>
+          <li>Vuốt nhanh xuống để thả ngay</li>
+        </ul>
+      </div>
+      <form id="playerForm" hidden>
+        <label for="username">Tên người chơi</label>
+        <input id="username" name="username" minlength="2" maxlength="24" autocomplete="nickname" required placeholder="Nhập tên của bạn" />
+        <button class="big-btn" type="submit">Bắt đầu</button>
+      </form>
+      <p id="playerName" hidden></p>
+      <p id="playerCode" hidden role="status"></p>
+      <p id="playerStatus" role="status">Đang tải thông tin người chơi…</p>
+      <button id="ovBtn" class="big-btn" disabled>Bắt đầu</button>
+      <section id="leaderboard" aria-labelledby="leaderboardTitle">
+        <h2 id="leaderboardTitle">Top 10 · Điểm lần đầu</h2>
+        <p id="leaderboardStatus" role="status">Đang tải…</p>
+        <ol id="leaderboardList"></ol>
+        <button id="refreshLeaderboard" type="button">Làm mới</button>
+      </section>
+    </div>
+  </div>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>

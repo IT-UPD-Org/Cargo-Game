@@ -1,0 +1,28 @@
+[package]
+name = "encrypt_modunel"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = "=0.2.100"
+rsa = { version = "0.9", features = ["sha2"] }
+sha2 = "0.10"
+rand = "0.8"
+getrandom = { version = "0.2", features = ["js"] }
+aes-gcm = "0.10"
+md5 = "0.7"
+base64 = "0.22"
+serde_json = "1"
+js-sys = "=0.3.77"
+web-sys = { version = "=0.3.77", features = ["Window", "Document", "Element", "HtmlCanvasElement", "CanvasRenderingContext2d", "Navigator", "Screen", "Location"] }
+wasm-bindgen-futures = "=0.4.50"
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true

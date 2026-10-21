@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.env
+.env.*
+*.log
+README.md
+build-keys
+encrypt_modunel/target
+static/wasm
+encrypt_modunel/dev-public.der

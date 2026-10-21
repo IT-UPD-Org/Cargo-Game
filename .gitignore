@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+build-keys/
+encrypt_modunel/target/
+static/wasm/
+encrypt_modunel/dev-public.der

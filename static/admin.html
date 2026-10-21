@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="vi" class="admin-root">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quản trị · Tra cứu điểm</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="admin-page">
+  <div id="overlay" class="show">
+    <main class="panel">
+      <h1>Bảng điều khiển</h1>
+      <section class="admin-lookup" aria-label="Tra cứu người chơi">
+      <form id="lookupForm">
+        <label for="code">Mã người chơi (5 số)</label>
+        <input id="code" type="text" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" required>
+        <button class="big-btn" type="submit">Tra cứu</button>
+      </form>
+      <p id="lookupStatus" role="status"></p>
+      <div id="lookupResult"></div>
+      </section>
+      <section class="admin-stats" aria-labelledby="chartTitle">
+        <h2 id="chartTitle">Điểm lần đầu của người chơi</h2>
+        <p id="chartStatus" role="status"></p>
+        <div id="scoreChart"></div>
+        <button id="refreshStats" class="big-btn" type="button">Làm mới thống kê</button>
+      </section>
+      <section class="admin-leaderboard" aria-labelledby="adminLeaderboardTitle">
+        <h2 id="adminLeaderboardTitle">Bảng xếp hạng · Điểm lần đầu</h2>
+        <div class="admin-table-scroll">
+          <table>
+            <thead><tr><th>Hạng</th><th>Người chơi</th><th>Mã</th><th>Điểm</th><th>Ngày chơi</th></tr></thead>
+            <tbody id="adminLeaderboardBody"></tbody>
+          </table>
+        </div>
+        <p id="adminLeaderboardStatus" role="status"></p>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="admin.js"></script>
+</body>
+</html>
