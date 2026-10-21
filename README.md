@@ -23,7 +23,7 @@ Express + TypeScript + MongoDB. Game files live in `static/`.
 
 1. Install Node.js 20+ and start MongoDB locally (or use MongoDB Atlas).
 2. Run `npm install`.
-3. Copy `.env.example` to `.env` and configure `MONGODB_URI` and `MONGODB_DATABASE`.
+3. Copy `.env.example` to `.env` and configure `MONGODB_URL` and `MONGODB_DATABASE`.
 4. Run `npm run dev`, then open http://localhost:3000.
 
 Production: `npm run build`, then `npm start`. Use HTTPS and set `NODE_ENV=production`. Phone access also needs HTTPS for the browser fingerprint Web Crypto APIs (localhost works on desktop).

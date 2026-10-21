@@ -20,14 +20,14 @@ interface Player {
   createdAt: Date;
   updatedAt: Date;
 }
-if (process.env.NODE_ENV === 'production' && !process.env.MONGODB_URI) {
-  throw new Error('MONGODB_URI is required in production. Set it in Temps environment variables; localhost points to this container, not MongoDB.');
+if (process.env.NODE_ENV === 'production' && !process.env.MONGODB_URL) {
+  throw new Error('MONGODB_URL is required in production. Set it in Temps environment variables.');
 }
-const client = new MongoClient(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017', { serverSelectionTimeoutMS: 10000 });
+const client = new MongoClient(process.env.MONGODB_URL || 'mongodb://127.0.0.1:27017', { serverSelectionTimeoutMS: 10000 });
 console.log('[startup] Connecting to MongoDB');
 try { await client.connect(); }
 catch (error) {
-  console.error('[startup] MongoDB connection failed. Check MONGODB_URI, credentials, network access and Atlas IP allowlist.');
+  console.error('[startup] MongoDB connection failed. Check MONGODB_URL, credentials, network access and Atlas IP allowlist.');
   throw error;
 }
 const players = client.db(process.env.MONGODB_DATABASE || 'cargo_game').collection<Player>('players');
@@ -37,7 +37,6 @@ await players.createIndex({ firstPlayCode: 1 }, { unique: true, sparse: true });
 await players.createIndex({ firstPlayScore: -1, firstPlayedAt: 1, _id: 1 });
 await players.createIndex({ highestScore: -1, createdAt: 1, _id: 1 });
 const app = express();
-app.get('/health', (_req, res) => { res.status(200).json({ status: 'ok' }); });
 const adminSessions = new Map<string, number>();
 const adminAuth = (req: Request, res: Response, next: NextFunction) => {
   res.setHeader('Cache-Control', 'no-store');
