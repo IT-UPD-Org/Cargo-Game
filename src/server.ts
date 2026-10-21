@@ -20,8 +20,16 @@ interface Player {
   createdAt: Date;
   updatedAt: Date;
 }
-const client = new MongoClient(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017');
-await client.connect();
+if (process.env.NODE_ENV === 'production' && !process.env.MONGODB_URI) {
+  throw new Error('MONGODB_URI is required in production. Set it in Temps environment variables; localhost points to this container, not MongoDB.');
+}
+const client = new MongoClient(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017', { serverSelectionTimeoutMS: 10000 });
+console.log('[startup] Connecting to MongoDB');
+try { await client.connect(); }
+catch (error) {
+  console.error('[startup] MongoDB connection failed. Check MONGODB_URI, credentials, network access and Atlas IP allowlist.');
+  throw error;
+}
 const players = client.db(process.env.MONGODB_DATABASE || 'cargo_game').collection<Player>('players');
 await players.createIndex({ usernameKey: 1 }, { unique: true });
 await players.createIndex({ browserId: 1 });
@@ -29,6 +37,7 @@ await players.createIndex({ firstPlayCode: 1 }, { unique: true, sparse: true });
 await players.createIndex({ firstPlayScore: -1, firstPlayedAt: 1, _id: 1 });
 await players.createIndex({ highestScore: -1, createdAt: 1, _id: 1 });
 const app = express();
+app.get('/health', (_req, res) => { res.status(200).json({ status: 'ok' }); });
 const adminSessions = new Map<string, number>();
 const adminAuth = (req: Request, res: Response, next: NextFunction) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -192,7 +201,11 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error(error);
   res.status(500).json({ error: 'Không thể kết nối máy chủ. Vui lòng thử lại.' });
 });
-const server = app.listen(Number(process.env.PORT || 3000), () => console.log(`Cargo game: http://localhost:${process.env.PORT || 3000}`));
+const port = Number(process.env.PORT || 3000);
+if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT must be an integer between 1 and 65535');
+const server = app.listen(port, '0.0.0.0', () => console.log(`[startup] Cargo game listening on 0.0.0.0:${port}`));
+server.on('error', error => { console.error('[startup] HTTP listener failed:', error); process.exit(1); });
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => {
+  console.log(`[shutdown] Received ${signal}`);
   server.close(() => { void client.close().then(() => process.exit(0)); });
 });
