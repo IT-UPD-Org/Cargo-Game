@@ -101,7 +101,7 @@ app.get('/api/player', route(async (req, res) => {
 app.get('/api/leaderboard', route(async (req, res) => {
   const id = identity(req);
   const top = await players.find({ firstPlayScore: { $exists: true } }, { projection: { username: 1, highestScore: 1 } })
-    .sort({ highestScore: -1, createdAt: 1, _id: 1 }).limit(10).toArray();
+    .sort({ highestScore: -1, createdAt: 1, _id: 1 }).limit(5).toArray();
   const current = id ? await players.findOne({ sessionId: id }) : null;
   res.json({
     players: await Promise.all(top.map(async (p, index) => ({
@@ -127,6 +127,11 @@ app.post('/api/player', route(async (req, res) => {
   if (typeof username !== 'string' || !/^[\p{L}\p{N}_ .-]{2,24}$/u.test(username.trim()) ||
     typeof browserId !== 'string' || !/^[a-f0-9]{32}$/.test(browserId)) {
     res.status(400).json({ error: 'Tên cần 2–24 ký tự: chữ, số, dấu cách, _, . hoặc -.' }); return;
+  }
+  if (req.body.check === true) {
+    const taken = await players.findOne({ usernameKey: username.trim().normalize('NFC').toLocaleLowerCase('vi') }, { projection: { _id: 1 } });
+    if (taken) { res.status(409).json({ error: 'Tên này đã được sử dụng. Vui lòng chọn tên khác.' }); return; }
+    res.json({ available: true }); return;
   }
   const now = new Date();
   const player: Player = {
@@ -200,6 +205,14 @@ app.post('/api/admin/lookup', route(async (req, res) => {
   if (!player) { res.status(404).json({ error: 'Không tìm thấy mã.' }); return; }
   const history = await plays.find({ playerId: player._id }, { projection: { _id: 0, score: 1, scores: 1, playedAt: 1 } }).sort({ playedAt: -1 }).toArray();
   res.json({ player: { ...publicPlayer(player), firstPlayedAt: player.firstPlayedAt, playCount: history.length }, history });
+}));
+
+app.delete('/api/admin/players', route(async (req, res) => {
+  if (req.body?.confirm !== 'XOA TAT CA') {
+    res.status(400).json({ error: 'Cần nhập đúng cụm xác nhận để xóa toàn bộ người chơi.' }); return;
+  }
+  const [removedPlays, removedPlayers] = await Promise.all([plays.deleteMany({}), players.deleteMany({})]);
+  res.json({ deletedPlayers: removedPlayers.deletedCount, deletedPlays: removedPlays.deletedCount });
 }));
 
 app.delete('/api/admin/player/:code', route(async (req, res) => {

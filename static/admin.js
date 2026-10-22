@@ -80,6 +80,27 @@ async function loadStats() {
 }
 refreshStats.addEventListener('click', loadStats);
 void loadStats();
+const deleteAll = document.getElementById('deleteAll');
+deleteAll.addEventListener('click', async () => {
+  const answer = prompt('Thao tác này xóa TOÀN BỘ người chơi và lịch sử chơi, không thể hoàn tác.\nNhập "XOA TAT CA" để xác nhận:');
+  if (answer !== 'XOA TAT CA') return;
+  deleteAll.disabled = true;
+  try {
+    const response = await fetch('/api/admin/players', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: answer })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Không thể xóa.');
+    result.replaceChildren();
+    historyBody.replaceChildren();
+    historyStatus.textContent = 'Tra cứu mã để xem các lần chơi và điểm.';
+    status.textContent = `Đã xóa ${data.deletedPlayers} người chơi và ${data.deletedPlays} lần chơi.`;
+    await loadStats();
+  } catch (error) { status.textContent = error.message; }
+  finally { deleteAll.disabled = false; }
+});
 form.addEventListener('submit', async event => {
   event.preventDefault();
   const button = form.querySelector('button');

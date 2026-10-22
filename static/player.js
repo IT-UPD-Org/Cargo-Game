@@ -68,6 +68,9 @@ export const cargoPlayer = {};
     try {
       const username = input.value.trim();
       if (!/^[\p{L}\p{N}_ .-]{2,24}$/u.test(username)) throw new Error('Tên cần 2–24 ký tự hợp lệ.');
+      status.textContent = 'Đang kiểm tra tên…';
+      await api('/api/player', { username, check: true });
+      status.textContent = '';
       pendingUsername = username;
       form.hidden = true;
       start.hidden = false;
