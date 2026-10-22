@@ -224,7 +224,7 @@ import { cargoPlayer } from './player.js';
   function dropInterval() {
     // Quickly deliver cargo from the screen edge to the hold entrance.
     const bottom = piece.m.reduce((last, row, r) => row.some(Boolean) ? r : last, 0);
-    const interval = 800 / (1 + Math.min(placedPieces, 8) * 5 / 8);
+    const interval = 800 / (1 + Math.min(placedPieces, 10) * 3 / 10);
     if (piece.y + bottom < 0) return Math.min(65, interval);
     return interval;
   }
@@ -298,7 +298,7 @@ import { cargoPlayer } from './player.js';
     }));
     if (over) { loseLife(); return; }
     placedPieces++;
-    level = 1 + Math.floor(Math.min(placedPieces, 8) * 5 / 8);
+    level = 1 + Math.floor(Math.min(placedPieces, 10) * 3 / 10);
 
     const full = [];
     for (let r = 0; r < ROWS; r++) if (grid[r].every(Boolean)) full.push(r);
