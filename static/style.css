@@ -315,3 +315,15 @@ html.admin-root body.admin-page { height: auto; overflow: visible; touch-action:
   #controls .ctl { width: 100%; height: 100%; font-size: 28px; }
   #controls { transform: translateY(-16px); }
 }
+
+@media (max-width: 700px), (pointer: coarse) {
+  #app {
+    height: 100svh;
+    height: 100dvh;
+    grid-template-rows: 58px minmax(0, 1fr) clamp(172px, 30dvh, 230px);
+    padding: max(6px, env(safe-area-inset-top)) 14px max(8px, env(safe-area-inset-bottom));
+  }
+  #stage { width: 100%; height: 100%; padding-top: 80px; padding-bottom: 18px; }
+  #controls { transform: none; }
+  #hud { min-height: 0; }
+}

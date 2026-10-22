@@ -102,9 +102,9 @@ import { cargoPlayer } from './player.js';
   // ---------- Layout ----------
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 3);
-    const pad = 12;
-    const w = stage.clientWidth - pad;
-    const h = stage.clientHeight - 138;
+    const layout = getComputedStyle(stage);
+    const w = stage.clientWidth - 36;
+    const h = stage.clientHeight - parseFloat(layout.paddingTop) - parseFloat(layout.paddingBottom) - 6;
     cell = Math.max(10, Math.floor(Math.min(w / COLS, h / ROWS, 70)));
     boardCv.style.width = cell * COLS + "px";
     boardCv.style.height = cell * ROWS + "px";
@@ -127,6 +127,8 @@ import { cargoPlayer } from './player.js';
     drawNext();
   }
   window.addEventListener("resize", resize);
+  window.visualViewport?.addEventListener('resize', resize);
+  new ResizeObserver(resize).observe(stage);
   window.addEventListener("orientationchange", () => setTimeout(resize, 200));
 
   // ---------- Game state ----------
@@ -310,6 +312,7 @@ import { cargoPlayer } from './player.js';
   }
 
   function loseLife(reason) {
+    if (state !== 'playing') return;
     breaking = null;
     roundScores.push(score);
     lives--;
@@ -328,7 +331,7 @@ import { cargoPlayer } from './player.js';
       state = "gameOver";
       const top = Math.max(...roundScores);
       showOverlay(
-        "Kết thúc",
+        reason === 'broken' ? 'Rớt công rồi!' : 'Tàu chở cao quá giới hạn',
         `<p>Điểm cao nhất</p><div class="big">${top}</div>`,
         "Chơi lại",
         startGame
