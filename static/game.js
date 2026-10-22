@@ -35,6 +35,7 @@ import { cargoPlayer } from './player.js';
   fallingCv.setAttribute('aria-hidden', 'true');
   document.body.append(fallingCv);
   const fallingCtx = fallingCv.getContext('2d');
+  let entryRows = 5;
   const nextCv = document.getElementById("next");
   const nctx = nextCv.getContext("2d");
   const stage = document.getElementById("stage");
@@ -101,7 +102,7 @@ import { cargoPlayer } from './player.js';
 
   // ---------- Layout ----------
   function resize() {
-    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
     const layout = getComputedStyle(stage);
     const w = stage.clientWidth - 36;
     const h = stage.clientHeight - parseFloat(layout.paddingTop) - parseFloat(layout.paddingBottom) - 6;
@@ -113,6 +114,16 @@ import { cargoPlayer } from './player.js';
     requestAnimationFrame(() => {
       const boardRect = boardCv.getBoundingClientRect();
       const stageRect = stage.getBoundingClientRect();
+      const entryH = Math.max(0, Math.round(boardRect.top + boardCv.clientTop));
+      entryRows = Math.max(1, Math.ceil(entryH / cell));
+      const entryW = cell * COLS;
+      Object.assign(fallingCv.style, {
+        left: `${boardRect.left + boardCv.clientLeft}px`, top: '0px',
+        width: `${entryW}px`, height: `${entryH}px`
+      });
+      const pxW = Math.round(entryW * dpr), pxH = Math.round(entryH * dpr);
+      if (fallingCv.width !== pxW) fallingCv.width = pxW;
+      if (fallingCv.height !== pxH) fallingCv.height = pxH;
       stage.style.setProperty('--board-top', `${boardRect.top - stageRect.top}px`);
       stage.style.setProperty('--board-height', `${boardRect.height}px`);
       const waterline = boardRect.bottom - 16;
@@ -159,7 +170,6 @@ import { cargoPlayer } from './player.js';
   function makePiece(type) {
     const m = SHAPES[type].map((r) => r.slice());
     const bottom = m.reduce((last, row, r) => row.some(Boolean) ? r : last, 0);
-    const entryRows = Math.ceil(boardCv.getBoundingClientRect().top / cell);
     return { type, m, x: Math.floor((COLS - m[0].length) / 2), y: -entryRows - bottom };
   }
 
@@ -388,13 +398,7 @@ import { cargoPlayer } from './player.js';
   }
 
   function draw() {
-    const width = Math.round(window.innerWidth * dpr);
-    const height = Math.round(window.innerHeight * dpr);
-    if (fallingCv.width !== width || fallingCv.height !== height) {
-      fallingCv.width = width;
-      fallingCv.height = height;
-    }
-    fallingCtx.clearRect(0, 0, width, height);
+    fallingCtx.clearRect(0, 0, fallingCv.width, fallingCv.height);
     if (!grid) return;
     const s = cell * dpr;
     ctx.clearRect(0, 0, boardCv.width, boardCv.height);
@@ -467,10 +471,10 @@ import { cargoPlayer } from './player.js';
 
     if (piece && state === "playing") {
       piece.m.forEach((row, r) => row.forEach((v, c) => {
-        if (v) {
-          const rect = boardCv.getBoundingClientRect();
-          drawTile(fallingCtx, piece.type, (rect.left + boardCv.clientLeft) * dpr + (piece.x + c) * s, rect.top * dpr + (piece.y + r) * s, s);
-        }
+        if (!v) return;
+        const gy = piece.y + r;
+        if (gy >= 0) drawTile(ctx, piece.type, (piece.x + c) * s, gy * s, s);
+        else drawTile(fallingCtx, piece.type, (piece.x + c) * s, fallingCv.height + gy * s, s);
       }));
     }
   }
@@ -496,6 +500,7 @@ import { cargoPlayer } from './player.js';
     const dt = Math.min(100, now - (lastTime || now));
     lastTime = now;
     if (state === "playing") {
+      const before = `${piece.x},${piece.y},${piece.type},${placedPieces}`;
       if (breaking) {
         breaking.t += dt;
         if (breaking.t > 900) loseLife("broken");
@@ -516,7 +521,8 @@ import { cargoPlayer } from './player.js';
           }
         }
       }
-      draw();
+      const after = piece ? `${piece.x},${piece.y},${piece.type},${placedPieces}` : '';
+      if (breaking || clearing || before !== after) draw();
     }
     requestAnimationFrame(loop);
   }

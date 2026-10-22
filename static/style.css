@@ -31,7 +31,7 @@
 #playerCode { color: #ffcf4a; font-weight: bold; user-select: text; }
 #lookupForm input { display: block; width: 100%; padding: 12px; margin: 8px 0 16px; font: inherit; user-select: text; touch-action: auto; }
 #lookupStatus, #lookupResult { margin-top: 16px; overflow-wrap: anywhere; }
-#fallingCargo { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 5; image-rendering: pixelated; }
+#fallingCargo { position: fixed; pointer-events: none; z-index: 5; image-rendering: pixelated; }
 #playerForm { margin: 16px 0; text-align: left; }
 #playerForm[hidden] { display: none; }
 #username { width: 100%; padding: 12px; margin: 8px 0; font: inherit; user-select: text; touch-action: auto; }
