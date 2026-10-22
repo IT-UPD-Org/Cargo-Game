@@ -12,12 +12,12 @@ export const cargoPlayer = {};
   const nameButton = document.getElementById('playerName');
   const codePanel = document.getElementById('playerCode');
   function updateProfile() {
+    document.getElementById('bestScore').textContent = player?.highestScore || 0;
+    document.getElementById('playCount').textContent = player?.playCount || 0;
     nameButton.hidden = !player;
     codePanel.hidden = !player;
     nameButton.textContent = player?.username || '';
-    codePanel.textContent = player?.firstPlayCode
-      ? `Mã của bạn: ${player.firstPlayCode}`
-      : 'Hoàn thành lần chơi đầu tiên để nhận mã 5 số.';
+    codePanel.textContent = `Điểm cao nhất: ${player?.highestScore || 0}`;
   }
   const ranking = document.getElementById('leaderboardList');
   const rankingStatus = document.getElementById('leaderboardStatus');
@@ -35,6 +35,10 @@ export const cargoPlayer = {};
         rank.textContent = `#${entry.rank}`;
         const name = document.createElement('span');
         name.textContent = entry.username + (entry.isYou ? ' (Bạn)' : '');
+        const playCount = document.createElement('small');
+        playCount.style.display = 'block';
+        playCount.textContent = `${entry.playCount} lần chơi`;
+        name.append(playCount);
         const score = document.createElement('strong');
         score.textContent = entry.highestScore.toLocaleString('vi-VN');
         row.append(rank, name, score);
@@ -53,7 +57,7 @@ export const cargoPlayer = {};
   function display(p) {
     player = p; form.hidden = true; start.hidden = false; start.disabled = false;
     updateProfile();
-    status.textContent = p.firstPlayScore !== undefined ? `Điểm lần chơi đầu tiên: ${p.firstPlayScore}` : '';
+    status.textContent = p.firstPlayCode ? `Mã của bạn: ${p.firstPlayCode}` : '';
     void loadLeaderboard();
   }
   start.disabled = true;
@@ -77,9 +81,9 @@ export const cargoPlayer = {};
   Object.defineProperties(cargoPlayer, Object.getOwnPropertyDescriptors({
     get firstPlayCode() { return player?.firstPlayCode; },
     get firstPlayScore() { return player?.firstPlayScore; },
+    get highestScore() { return player?.highestScore; },
     get ready() { return !!player || !!pendingUsername; },
-    async save(scores) {
-      if (player?.firstPlayCode) return player.firstPlayScore;
+    async save(scores, playId) {
       if (!player && pendingUsername) {
         try {
           const registered = await api('/api/player', { username: pendingUsername });
@@ -91,11 +95,12 @@ export const cargoPlayer = {};
           throw error;
         }
       }
-      const result = await api('/api/score', { scores });
+      const result = await api('/api/score', { scores, playId });
       player = result.player;
+      player.playCount = result.playCount;
       updateProfile();
       void loadLeaderboard();
-      return player.highestScore;
+      return result.score;
     }
   }));
   api('/api/player', {}).then(({ player }) => {

@@ -31,6 +31,10 @@ catch (error) {
   throw error;
 }
 const players = client.db(process.env.MONGODB_DATABASE || 'cargo_game').collection<Player>('players');
+const plays = client.db(process.env.MONGODB_DATABASE || 'cargo_game').collection<{
+  _id: string; playerId: string; scores: number[]; score: number; playedAt: Date;
+}>('plays');
+await plays.createIndex({ playerId: 1, playedAt: -1 });
 await players.createIndex({ usernameKey: 1 }, { unique: true });
 await players.createIndex({ browserId: 1 });
 await players.createIndex({ firstPlayCode: 1 }, { unique: true, sparse: true });
@@ -83,7 +87,7 @@ function identity(req: Request): string | null {
   const token = req.headers.cookie?.split(';').map(v => v.trim()).find(v => v.startsWith('cargo_player='))?.slice(13);
   return token && /^[a-f0-9]{64}$/.test(token) ? hash(token) : null;
 }
-const publicPlayer = (p: Player) => ({ username: p.username, highestScore: p.firstPlayScore ?? p.highestScore,
+const publicPlayer = (p: Player) => ({ username: p.username, highestScore: p.highestScore,
   firstPlayCode: p.firstPlayCode, firstPlayScore: p.firstPlayScore });
 const route = (fn: (req: Request, res: Response) => Promise<void>) =>
   (req: Request, res: Response, next: NextFunction) => { fn(req, res).catch(next); };
@@ -91,18 +95,19 @@ const route = (fn: (req: Request, res: Response) => Promise<void>) =>
 app.get('/api/player', route(async (req, res) => {
   const id = identity(req);
   const player = id ? await players.findOne({ sessionId: id }) : null;
-  res.json({ player: player ? publicPlayer(player) : null });
+  res.json({ player: player ? { ...publicPlayer(player), playCount: await plays.countDocuments({ playerId: player._id }) } : null });
 }));
 
 app.get('/api/leaderboard', route(async (req, res) => {
   const id = identity(req);
-  const top = await players.find({ firstPlayScore: { $exists: true } }, { projection: { username: 1, firstPlayScore: 1 } })
-    .sort({ firstPlayScore: -1, firstPlayedAt: 1, _id: 1 }).limit(10).toArray();
+  const top = await players.find({ firstPlayScore: { $exists: true } }, { projection: { username: 1, highestScore: 1 } })
+    .sort({ highestScore: -1, createdAt: 1, _id: 1 }).limit(10).toArray();
   const current = id ? await players.findOne({ sessionId: id }) : null;
   res.json({
-    players: top.map((p, index) => ({
-      rank: index + 1, username: p.username, highestScore: p.firstPlayScore, isYou: p._id === current?._id
-    }))
+    players: await Promise.all(top.map(async (p, index) => ({
+      rank: index + 1, username: p.username, highestScore: p.highestScore, isYou: p._id === current?._id,
+      playCount: await plays.countDocuments({ playerId: p._id })
+    })))
   });
 }));
 
@@ -117,7 +122,7 @@ app.post('/api/player', route(async (req, res) => {
     maxAge: 365 * 24 * 60 * 60 * 1000, path: '/'
   });
   const existing = await players.findOneAndUpdate({ browserId }, { $set: { sessionId: hash(token) } }, { returnDocument: 'after' });
-  if (existing) { setSession(); res.json({ player: publicPlayer(existing) }); return; }
+  if (existing) { setSession(); res.json({ player: { ...publicPlayer(existing), playCount: await plays.countDocuments({ playerId: existing._id }) } }); return; }
   if (username === undefined) { res.json({ player: null }); return; }
   if (typeof username !== 'string' || !/^[\p{L}\p{N}_ .-]{2,24}$/u.test(username.trim()) ||
     typeof browserId !== 'string' || !/^[a-f0-9]{32}$/.test(browserId)) {
@@ -143,8 +148,11 @@ app.post('/api/player', route(async (req, res) => {
 app.post('/api/score', route(async (req, res) => {
   const id = identity(req);
   if (!id) { res.status(401).json({ error: 'Vui lòng nhập tên trước khi chơi.' }); return; }
-  const { scores } = req.body;
-  if (!Array.isArray(scores) || scores.length !== 3 || scores.some(s => !Number.isSafeInteger(s) || s < 0 || s > 100000000)) {
+  const { scores, playId } = req.body;
+  if (typeof playId !== 'string' || !/^[a-f0-9-]{36}$/.test(playId)) {
+    res.status(400).json({ error: 'Mã lần chơi không hợp lệ.' }); return;
+  }
+  if (!Array.isArray(scores) || scores.length !== 1 || scores.some(s => !Number.isSafeInteger(s) || s < 0 || s > 100000000)) {
     res.status(400).json({ error: 'Điểm không hợp lệ.' }); return;
   }
   const updated = await players.findOne({ sessionId: id });
@@ -164,14 +172,23 @@ app.post('/api/score', route(async (req, res) => {
     }
     if (!player.firstPlayCode) { res.status(503).json({ error: 'Chưa thể cấp mã. Vui lòng thử lưu lại.' }); return; }
   }
-  res.json({ player: publicPlayer(player) });
+  const recordId = `${player._id}:${playId}`;
+  await plays.updateOne({ _id: recordId }, { $setOnInsert: {
+    playerId: player._id, scores, score: Math.max(...scores), playedAt: new Date()
+  } }, { upsert: true });
+  const saved = await players.findOneAndUpdate({ _id: player._id }, {
+    $max: { highestScore: Math.max(...scores) }, $set: { updatedAt: new Date() }
+  }, { returnDocument: 'after' });
+  res.json({ player: publicPlayer(saved!), playCount: await plays.countDocuments({ playerId: player._id }), score: Math.max(...scores) });
 }));
 
 app.get('/api/admin/stats', route(async (_req, res) => {
   const entries = await players.find({ firstPlayScore: { $exists: true } }, {
-    projection: { _id: 0, username: 1, firstPlayScore: 1, firstPlayedAt: 1, firstPlayCode: 1 }
+    projection: { username: 1, highestScore: 1, firstPlayedAt: 1, firstPlayCode: 1 }
   }).sort({ firstPlayedAt: 1, _id: 1 }).toArray();
-  res.json({ points: entries.map(p => ({ username: p.username, code: p.firstPlayCode, score: p.firstPlayScore, playedAt: p.firstPlayedAt })), total: entries.length });
+  const counts = await plays.aggregate<{ _id: string; count: number }>([{ $group: { _id: '$playerId', count: { $sum: 1 } } }]).toArray();
+  const countMap = new Map(counts.map(p => [p._id, p.count]));
+  res.json({ points: entries.map(p => ({ username: p.username, code: p.firstPlayCode, score: p.highestScore, playedAt: p.firstPlayedAt, playCount: countMap.get(p._id) || 0 })), total: entries.length });
 }));
 
 app.post('/api/admin/lookup', route(async (req, res) => {
@@ -181,7 +198,8 @@ app.post('/api/admin/lookup', route(async (req, res) => {
   }
   const player = await players.findOne({ firstPlayCode: code });
   if (!player) { res.status(404).json({ error: 'Không tìm thấy mã.' }); return; }
-  res.json({ player: { ...publicPlayer(player), firstPlayedAt: player.firstPlayedAt } });
+  const history = await plays.find({ playerId: player._id }, { projection: { _id: 0, score: 1, scores: 1, playedAt: 1 } }).sort({ playedAt: -1 }).toArray();
+  res.json({ player: { ...publicPlayer(player), firstPlayedAt: player.firstPlayedAt, playCount: history.length }, history });
 }));
 
 app.delete('/api/admin/player/:code', route(async (req, res) => {
@@ -189,6 +207,8 @@ app.delete('/api/admin/player/:code', route(async (req, res) => {
   if (typeof code !== 'string' || !/^\d{5}$/.test(code)) {
     res.status(400).json({ error: 'Mã phải gồm 5 chữ số.' }); return;
   }
+  const target = await players.findOne({ firstPlayCode: code });
+  if (target) await plays.deleteMany({ playerId: target._id });
   const result = await players.deleteOne({ firstPlayCode: code });
   if (!result.deletedCount) { res.status(404).json({ error: 'Không tìm thấy người chơi.' }); return; }
   res.json({ deleted: true });

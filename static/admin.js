@@ -1,6 +1,8 @@
 const form = document.getElementById('lookupForm');
 const status = document.getElementById('lookupStatus');
 const result = document.getElementById('lookupResult');
+const historyBody = document.getElementById('historyBody');
+const historyStatus = document.getElementById('historyStatus');
 const chart = document.getElementById('scoreChart');
 const chartStatus = document.getElementById('chartStatus');
 const refreshStats = document.getElementById('refreshStats');
@@ -16,7 +18,7 @@ async function loadStats() {
     const ranked = data.points.slice().sort((a, b) => b.score - a.score || new Date(a.playedAt) - new Date(b.playedAt));
     ranked.forEach((player, index) => {
       const row = document.createElement('tr');
-      for (const value of [index + 1, player.username, player.code || '—', player.score.toLocaleString('vi-VN'), new Date(player.playedAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })]) {
+      for (const value of [index + 1, player.username, player.code || '—', player.score.toLocaleString('vi-VN'), player.playCount, new Date(player.playedAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })]) {
         const cell = document.createElement('td');
         cell.textContent = value;
         row.append(cell);
@@ -95,10 +97,22 @@ form.addEventListener('submit', async event => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Không thể tra cứu.');
     const { player } = data;
+    historyBody.replaceChildren();
+    historyStatus.textContent = `${player.username} · ${data.history.length} lần chơi`;
+    data.history.forEach((play, index) => {
+      const row = document.createElement('tr');
+      for (const value of [data.history.length - index, new Date(play.playedAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }), play.score.toLocaleString('vi-VN')]) {
+        const cell = document.createElement('td');
+        cell.textContent = value;
+        row.append(cell);
+      }
+      historyBody.append(row);
+    });
     for (const [label, value] of Object.entries({
       'Người chơi': player.username, 'Mã': player.firstPlayCode,
       'Điểm lần chơi đầu': player.firstPlayScore, 'Kỷ lục': player.highestScore,
-      'Ngày chơi đầu': new Date(player.firstPlayedAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })
+      'Ngày chơi đầu': new Date(player.firstPlayedAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }),
+      'Số lần chơi': player.playCount
     })) {
       const row = document.createElement('p');
       row.textContent = `${label}: ${value}`;
@@ -116,6 +130,8 @@ form.addEventListener('submit', async event => {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Không thể xóa người chơi.');
         result.replaceChildren();
+        historyBody.replaceChildren();
+        historyStatus.textContent = 'Tra cứu mã để xem các lần chơi và điểm.';
         status.textContent = `Đã xóa ${player.username}.`;
         await loadStats();
       } catch (error) {

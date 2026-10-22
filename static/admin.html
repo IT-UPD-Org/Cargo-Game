@@ -19,17 +19,25 @@
       <p id="lookupStatus" role="status"></p>
       <div id="lookupResult"></div>
       </section>
-      <section class="admin-stats" aria-labelledby="chartTitle">
-        <h2 id="chartTitle">Điểm lần đầu của người chơi</h2>
+      <section class="admin-history" aria-labelledby="historyTitle">
+        <h2 id="historyTitle">Lịch sử chơi</h2>
+        <p id="historyStatus">Tra cứu mã để xem các lần chơi và điểm.</p>
+        <div class="admin-table-scroll">
+          <table><thead><tr><th>Lần chơi</th><th>Thời gian</th><th>Điểm</th></tr></thead>
+          <tbody id="historyBody"></tbody></table>
+        </div>
+      </section>
+      <section class="admin-stats" style="grid-column: 1 / -1" aria-labelledby="chartTitle">
+        <h2 id="chartTitle">Điểm cao nhất của người chơi</h2>
         <p id="chartStatus" role="status"></p>
         <div id="scoreChart"></div>
         <button id="refreshStats" class="big-btn" type="button">Làm mới thống kê</button>
       </section>
       <section class="admin-leaderboard" aria-labelledby="adminLeaderboardTitle">
-        <h2 id="adminLeaderboardTitle">Bảng xếp hạng · Điểm lần đầu</h2>
+        <h2 id="adminLeaderboardTitle">Bảng xếp hạng · Điểm cao nhất</h2>
         <div class="admin-table-scroll">
           <table>
-            <thead><tr><th>Hạng</th><th>Người chơi</th><th>Mã</th><th>Điểm</th><th>Ngày chơi</th></tr></thead>
+            <thead><tr><th>Hạng</th><th>Người chơi</th><th>Mã</th><th>Điểm</th><th>Số lần chơi</th><th>Ngày chơi</th></tr></thead>
             <tbody id="adminLeaderboardBody"></tbody>
           </table>
         </div>

@@ -5,7 +5,7 @@ import { cargoPlayer } from './player.js';
 
   const COLS = 10;
   const ROWS = 7;
-  const MAX_LIVES = 3;
+  const MAX_LIVES = 1;
   const LINE_SCORES = [0, 100, 300, 500, 800];
 
   const SHAPES = {
@@ -110,6 +110,14 @@ import { cargoPlayer } from './player.js';
     boardCv.style.height = cell * ROWS + "px";
     stage.style.setProperty("--board-size", cell * COLS + "px");
     stage.style.setProperty("--board-height", cell * ROWS + "px");
+    requestAnimationFrame(() => {
+      const boardRect = boardCv.getBoundingClientRect();
+      const stageRect = stage.getBoundingClientRect();
+      stage.style.setProperty('--board-top', `${boardRect.top - stageRect.top}px`);
+      stage.style.setProperty('--board-height', `${boardRect.height}px`);
+      const waterline = boardRect.bottom - 16;
+      document.documentElement.style.setProperty('--waterline', `${waterline}px`);
+    });
     boardCv.width = cell * COLS * dpr;
     boardCv.height = cell * ROWS * dpr;
     nextCv.width = 80 * dpr;
@@ -128,7 +136,7 @@ import { cargoPlayer } from './player.js';
   let dropTimer, lastTime;
   const LOCK_DELAY = 500;
   let lockTimer = 0;
-  let elapsed = 0;
+  let placedPieces = 0;
   let state = "menu"; // menu | playing | paused | roundOver | gameOver
   let clearing = null; // { rows, t }
   let breaking = null; // { cells, piece, t } - unsupported cargo falling/broken
@@ -174,7 +182,7 @@ import { cargoPlayer } from './player.js';
   function startRound() {
     grid = emptyGrid();
     bag = [];
-    score = 0; lines = 0; level = 1; elapsed = 0;
+    score = 0; lines = 0; level = 1; placedPieces = 0;
     nextType = nextFromBag();
     spawn();
     dropTimer = 0;
@@ -204,8 +212,9 @@ import { cargoPlayer } from './player.js';
   function dropInterval() {
     // Quickly deliver cargo from the screen edge to the hold entrance.
     const bottom = piece.m.reduce((last, row, r) => row.some(Boolean) ? r : last, 0);
-    if (piece.y + bottom < 0) return 65;
-    return Math.max(70, 800 * Math.pow(0.85, level - 1));
+    const interval = 800 / (1 + Math.min(placedPieces, 8) * 5 / 8);
+    if (piece.y + bottom < 0) return Math.min(65, interval);
+    return interval;
   }
 
   function move(dx) {
@@ -276,6 +285,8 @@ import { cargoPlayer } from './player.js';
       else grid[gy][piece.x + c] = piece.type;
     }));
     if (over) { loseLife(); return; }
+    placedPieces++;
+    level = 1 + Math.floor(Math.min(placedPieces, 8) * 5 / 8);
 
     const full = [];
     for (let r = 0; r < ROWS; r++) if (grid[r].every(Boolean)) full.push(r);
@@ -326,12 +337,13 @@ import { cargoPlayer } from './player.js';
       status.textContent = 'Đang lưu điểm…';
       ovBtn.disabled = true;
       const savedScores = roundScores.slice();
+      const playId = crypto.randomUUID();
       const save = async () => {
         ovBtn.disabled = true;
         try {
-          const highest = await cargoPlayer.save(savedScores);
+          const highest = await cargoPlayer.save(savedScores, playId);
           ovBody.innerHTML = `<p>Điểm cao nhất</p><div class="big">${highest}</div>`;
-          status.textContent = `Mã của bạn: ${cargoPlayer.firstPlayCode} · Điểm lần đầu: ${cargoPlayer.firstPlayScore}`;
+          status.textContent = `Mã của bạn: ${cargoPlayer.firstPlayCode}`;
           ovBtn.textContent = 'Chơi lại';
           ovAction = startGame;
         } catch (error) {
@@ -360,11 +372,6 @@ import { cargoPlayer } from './player.js';
   // ---------- HUD ----------
   function updateHud() {
     $score.textContent = score;
-    $lines.textContent = lines;
-    $level.textContent = level;
-    let h = "";
-    for (let i = 0; i < MAX_LIVES; i++) h += i < lives ? "♥" : '<span class="lost">♥</span>';
-    $lives.innerHTML = h;
   }
 
   // ---------- Rendering ----------
@@ -486,9 +493,6 @@ import { cargoPlayer } from './player.js';
     const dt = Math.min(100, now - (lastTime || now));
     lastTime = now;
     if (state === "playing") {
-      elapsed += dt;
-      const nextLevel = 1 + Math.floor(elapsed / 5000);
-      if (nextLevel !== level) { level = nextLevel; updateHud(); }
       if (breaking) {
         breaking.t += dt;
         if (breaking.t > 900) loseLife("broken");
@@ -503,8 +507,8 @@ import { cargoPlayer } from './player.js';
         } else {
           lockTimer = 0;
           dropTimer += dt;
-          if (dropTimer >= dropInterval()) {
-            dropTimer = 0;
+          while (dropTimer >= dropInterval() && !collides(piece.m, piece.x, piece.y + 1)) {
+            dropTimer -= dropInterval();
             piece.y++;
           }
         }
@@ -549,30 +553,6 @@ import { cargoPlayer } from './player.js';
     btn.addEventListener("contextmenu", (e) => e.preventDefault());
   });
 
-  // ---------- Input: gestures on board ----------
-  let touch = null;
-  boardCv.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    touch = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(), moved: false };
-    boardCv.setPointerCapture?.(e.pointerId);
-  });
-  boardCv.addEventListener("pointermove", (e) => {
-    if (!touch) return;
-    const step = Math.min(cell * 0.9, 45);
-    while (e.clientX - touch.x > step) { move(1); touch.x += step; touch.moved = true; }
-    while (touch.x - e.clientX > step) { move(-1); touch.x -= step; touch.moved = true; }
-    while (e.clientY - touch.y > step) { softDrop(); touch.y += step; touch.moved = true; }
-  });
-  boardCv.addEventListener("pointerup", (e) => {
-    if (!touch) return;
-    const dt = performance.now() - touch.t;
-    const dy = e.clientY - touch.sy;
-    const dx = e.clientX - touch.sx;
-    if (dy > Math.min(cell * 2, 80) && dt < 250 && Math.abs(dy) > Math.abs(dx) * 1.5) hardDrop();
-    else if (!touch.moved && dt < 300 && Math.hypot(dx, dy) < 10) rotate();
-    touch = null;
-  });
-  boardCv.addEventListener("pointercancel", () => { touch = null; });
 
   function vibrate(p) { if (navigator.vibrate) try { navigator.vibrate(p); } catch (_) {} }
 
