@@ -39,10 +39,12 @@ The Debian build stage supports Closure's native Linux executable. Compiler tool
 
 ## Identity and scores
 
-- First visit asks for a unique username. A SHA-256 browser ID combines a canvas rendering, browser attributes and a locally persisted random seed.
-- The server creates a random HttpOnly cookie and stores its hash as the player ID in MongoDB. Returning visits look up that ID and load the username and highest score.
-- Fingerprints are metadata, not credentials: they can change or collide. Clearing cookies loses access to that identity; no username recovery flow is implemented.
-- Completing three rounds sends their scores to `/api/score`. MongoDB `$max` atomically retains the highest historical score. Failed saves can be retried.
+- First visit asks for a unique username. The WASM module builds a 32-character MD5 browser ID from canvas, WebGL, fonts, math quirks, language and hardware signals, plus a random per-device seed kept in `localStorage` (`cargoDeviceSeed`) so identical phones get different IDs.
+- **No cookies for players.** On registration or login the server returns a random 64-hex session token. The WASM module stores it in `localStorage` (`cargoSession`) and sends it as the `X-Cargo-Session` header; only its SHA-256 hash is stored in MongoDB. The token is never exposed to page JavaScript, and responses stay encrypted.
+- Clearing site data (or Safari's 7-day storage purge) removes the token and seed, which loses access to that player; the admin code lookup is the recovery path. Private modes that block `localStorage` cannot stay logged in.
+- Players who logged in under the previous cookie scheme are handed over once (the old `cargo_player` cookie is exchanged for a localStorage token and then cleared).
+- The admin dashboard still uses its own HttpOnly `cargo_admin` cookie after Basic Auth.
+- Each finished round is sent to `/api/score` and stored in `plays`; `highestScore` is kept with `$max`. Failed saves can be retried.
 - Scores are validated for shape and range but gameplay runs in the browser, so these are not cheat-proof scores.
 
-API: `GET /api/player`, `POST /api/player` (`username`, `browserId`), `POST /api/score` (`scores`: three integers).
+API: `GET /api/player`, `POST /api/player` (`username`, `browserId`), `POST /api/score` (`scores`, `playId`).

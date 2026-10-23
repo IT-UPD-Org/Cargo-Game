@@ -7,6 +7,7 @@ include!(concat!(env!("OUT_DIR"), "/key.rs"));
 include!(concat!(env!("OUT_DIR"), "/response.rs"));
 
 const SEED_KEY: &str = "cargoDeviceSeed";
+const SESSION_KEY: &str = "cargoSession";
 
 thread_local! {
     static BROWSER_ID: std::cell::RefCell<Option<String>> = std::cell::RefCell::new(None);
@@ -136,8 +137,15 @@ pub async fn send_api(endpoint: String, body: JsValue) -> Result<JsValue, JsValu
     let url = format!("{origin}{endpoint}");
     let client = reqwest::Client::new();
     let response_key: Vec<u8> = RESPONSE_MASKED.iter().enumerate().map(|(i, b)| b ^ ((i * 37 + 93) as u8)).collect();
+    let storage = window.local_storage().ok().flatten();
+    let session = storage.as_ref().and_then(|s| s.get_item(SESSION_KEY).ok().flatten())
+        .filter(|t| t.len() == 64 && t.bytes().all(|b| b.is_ascii_hexdigit()));
+    let with_session = |builder: reqwest::RequestBuilder| match &session {
+        Some(token) => builder.header("X-Cargo-Session", token),
+        None => builder,
+    };
     let request = if body.is_undefined() {
-        client.get(&url)
+        with_session(client.get(&url))
     } else {
         let json = js_sys::JSON::stringify(&body)?.as_string()
             .ok_or_else(|| js_sys::Error::new("Invalid request body"))?;
@@ -146,7 +154,7 @@ pub async fn send_api(endpoint: String, body: JsValue) -> Result<JsValue, JsValu
         let payload = serde_json::json!({ "time": js_sys::Date::now(), "body": parsed }).to_string();
         let encrypted = encrypt_payload(&endpoint, &payload)
             .map_err(|error| js_sys::Error::new(&error.as_string().unwrap_or_else(|| "Encryption failed".into())))?;
-        client.post(&url).header("Content-Type", "application/octet-stream").body(encrypted)
+        with_session(client.post(&url).header("Content-Type", "application/octet-stream").body(encrypted))
     };
     let response = request.send().await.map_err(|e| js_sys::Error::new(&e.to_string()))?;
     let success = response.status().is_success();
@@ -160,6 +168,11 @@ pub async fn send_api(endpoint: String, body: JsValue) -> Result<JsValue, JsValu
         .map_err(|_| js_sys::Error::new("Response verification failed"))?;
     let text = String::from_utf8(plain).map_err(|_| js_sys::Error::new("Invalid response encoding"))?;
     let result = js_sys::JSON::parse(&text)?;
+    // The server hands out a new session token on login/registration. Keep it in localStorage, never expose it to the page.
+    if let (Some(store), Some(token)) = (&storage, js_sys::Reflect::get(&result, &JsValue::from_str("session")).ok().and_then(|v| v.as_string())) {
+        if token.len() == 64 { let _ = store.set_item(SESSION_KEY, &token); }
+        let _ = js_sys::Reflect::delete_property(result.unchecked_ref::<js_sys::Object>(), &JsValue::from_str("session"));
+    }
     if !success {
         let message = js_sys::Reflect::get(&result, &JsValue::from_str("error"))?.as_string()
             .unwrap_or_else(|| "Không thể gửi dữ liệu.".into());

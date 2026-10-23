@@ -83,7 +83,13 @@ app.use('/api', (req, res, next) => {
 });
 app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
+// The player session token lives in the browser's localStorage and is sent by the WASM client in this header.
 function identity(req: Request): string | null {
+  const token = req.get('X-Cargo-Session');
+  return token && /^[a-f0-9]{64}$/.test(token) ? hash(token) : null;
+}
+// Read-only: lets players who logged in before the switch to localStorage keep their record once, then drops the cookie.
+function legacyCookieIdentity(req: Request): string | null {
   const token = req.headers.cookie?.split(';').map(v => v.trim()).find(v => v.startsWith('cargo_player='))?.slice(13);
   return token && /^[a-f0-9]{64}$/.test(token) ? hash(token) : null;
 }
@@ -117,18 +123,23 @@ app.post('/api/player', route(async (req, res) => {
     res.status(400).json({ error: 'Mã trình duyệt không hợp lệ.' }); return;
   }
   const token = randomBytes(32).toString('hex');
-  const setSession = () => res.cookie('cargo_player', token, {
-    httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production',
-    maxAge: 365 * 24 * 60 * 60 * 1000, path: '/'
-  });
-  // The login cookie is the strongest proof of identity, and it lets players created under the old
-  // fingerprint (or whose local seed was purged) keep their record while moving to the new browser ID.
-  const cookieId = identity(req);
-  let existing = cookieId
-    ? await players.findOneAndUpdate({ sessionId: cookieId }, { $set: { sessionId: hash(token), browserId } }, { returnDocument: 'after' })
+  const withPlayCount = async (p: Player) => ({ ...publicPlayer(p), playCount: await plays.countDocuments({ playerId: p._id }) });
+  // 1) A valid session token is the strongest proof; keep it and just follow the device to its new browser ID.
+  const sessionId = identity(req);
+  const current = sessionId
+    ? await players.findOneAndUpdate({ sessionId }, { $set: { browserId } }, { returnDocument: 'after' })
     : null;
-  if (!existing) existing = await players.findOneAndUpdate({ browserId }, { $set: { sessionId: hash(token) } }, { returnDocument: 'after' });
-  if (existing) { setSession(); res.json({ player: { ...publicPlayer(existing), playCount: await plays.countDocuments({ playerId: existing._id }) } }); return; }
+  if (current) { res.json({ player: await withPlayCount(current) }); return; }
+  // 2) One-time hand-over from the old login cookie, then remove it.
+  const legacyId = legacyCookieIdentity(req);
+  if (legacyId) {
+    const migrated = await players.findOneAndUpdate({ sessionId: legacyId }, { $set: { sessionId: hash(token), browserId } }, { returnDocument: 'after' });
+    res.clearCookie('cargo_player', { path: '/' });
+    if (migrated) { res.json({ player: await withPlayCount(migrated), session: token }); return; }
+  }
+  // 3) Same device recognised by its browser ID: issue a fresh token.
+  const existing = await players.findOneAndUpdate({ browserId }, { $set: { sessionId: hash(token) } }, { returnDocument: 'after' });
+  if (existing) { res.json({ player: await withPlayCount(existing), session: token }); return; }
   if (username === undefined) { res.json({ player: null }); return; }
   if (typeof username !== 'string' || !/^[\p{L}\p{N}_ .-]{2,24}$/u.test(username.trim()) ||
     typeof browserId !== 'string' || !/^[a-f0-9]{32}$/.test(browserId)) {
@@ -152,8 +163,7 @@ app.post('/api/player', route(async (req, res) => {
     }
     throw error;
   }
-  setSession();
-  res.status(201).json({ player: publicPlayer(player) });
+  res.status(201).json({ player: publicPlayer(player), session: token });
 }));
 
 app.post('/api/score', route(async (req, res) => {
