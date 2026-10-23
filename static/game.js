@@ -149,6 +149,16 @@ import { cargoPlayer } from './player.js';
   let dropTimer, lastTime;
   const LOCK_DELAY = 500;
   let lockTimer = 0;
+  // Spamming rotate/move must not postpone landing forever: the grace timer restarts only for a new lowest row,
+  // or for a limited number of adjustments while resting.
+  const MAX_LOCK_RESETS = 8;
+  let lockResets = 0, lowestY = 0;
+  function noteRow() {
+    if (piece.y > lowestY) { lowestY = piece.y; lockTimer = 0; lockResets = 0; }
+  }
+  function graceReset() {
+    if (collides(piece.m, piece.x, piece.y + 1) && lockResets < MAX_LOCK_RESETS) { lockTimer = 0; lockResets++; }
+  }
   let placedPieces = 0;
   let state = "menu"; // menu | playing | paused | roundOver | gameOver
   let clearing = null; // { rows, t }
@@ -239,6 +249,7 @@ import { cargoPlayer } from './player.js';
     lockTimer = 0;
     dropTimer = 0;
     piece = makePiece(nextType);
+    lockResets = 0; lowestY = piece.y;
     nextType = nextFromBag();
     drawNext();
   }
@@ -253,7 +264,7 @@ import { cargoPlayer } from './player.js';
 
   function move(dx) {
     if (state !== "playing" || clearing || breaking) return;
-    if (!collides(piece.m, piece.x + dx, piece.y)) { piece.x += dx; vibrate(5); draw(); }
+    if (!collides(piece.m, piece.x + dx, piece.y)) { graceReset(); piece.x += dx; vibrate(5); draw(); }
   }
 
   function rotate() {
@@ -261,14 +272,14 @@ import { cargoPlayer } from './player.js';
     const r = rotateMatrix(piece.m);
     for (const k of [0, -1, 1, -2, 2]) {
       if (!collides(r, piece.x + k, piece.y)) {
-        piece.m = r; piece.x += k; vibrate(8); draw(); return;
+        graceReset(); piece.m = r; piece.x += k; vibrate(8); draw(); return;
       }
     }
   }
 
   function softDrop() {
     if (state !== "playing" || clearing || breaking) return;
-    if (!collides(piece.m, piece.x, piece.y + 1)) { piece.y++; score += 1; dropTimer = 0; updateHud(); }
+    if (!collides(piece.m, piece.x, piece.y + 1)) { piece.y++; noteRow(); score += 1; dropTimer = 0; updateHud(); }
     draw();
   }
 
@@ -531,15 +542,16 @@ import { cargoPlayer } from './player.js';
         if (clearing.t > 250) finishClear();
       } else {
         if (collides(piece.m, piece.x, piece.y + 1)) {
-          dropTimer = 0;
+          // Keep gravity progress while resting (capped) so rotating into a shape that can fall drops it on time.
+          dropTimer = Math.min(dropTimer + dt, dropInterval());
           lockTimer += dt;
           if (lockTimer >= LOCK_DELAY) lock();
         } else {
-          lockTimer = 0;
           dropTimer += dt;
           while (dropTimer >= dropInterval() && !collides(piece.m, piece.x, piece.y + 1)) {
             dropTimer -= dropInterval();
             piece.y++;
+            noteRow();
           }
         }
       }
