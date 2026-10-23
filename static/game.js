@@ -206,11 +206,33 @@ import { cargoPlayer } from './player.js';
     updateHud();
   }
 
-  function startGame() {
-    if (!cargoPlayer.ready) return;
+  const RULES_KEY = 'cargoRulesSeen';
+  function rulesSeen() {
+    try { if (localStorage.getItem(RULES_KEY)) return true; } catch (_) {}
+    return (cargoPlayer.playCount || 0) > 0;
+  }
+  function showRules() {
+    overlay.classList.add('rules-mode');
+    showOverlay('Luật chơi', `<ul class="rules">
+      <li>Xếp container vào khoang tàu. Lấp đầy một hàng ngang để xóa hàng và ghi điểm.</li>
+      <li>Mỗi container phải có vật đỡ bên dưới. Phần nhô ra lơ lửng sẽ <b>rớt</b> và bạn thua ngay.</li>
+      <li>Xếp cao tràn khỏi khoang tàu cũng thua.</li>
+      <li>Mỗi ván một lượt. Chơi không giới hạn, điểm cao nhất được lưu lên bảng xếp hạng.</li>
+      <li>Nút: ◀ ▶ di chuyển · ⟳ xoay · ▼ xuống một hàng.</li>
+    </ul>`, 'Đã hiểu · Bắt đầu', () => {
+      try { localStorage.setItem(RULES_KEY, '1'); } catch (_) {}
+      beginGame();
+    });
+  }
+  function beginGame() {
     lives = MAX_LIVES;
     roundScores = [];
     startRound();
+  }
+  function startGame() {
+    if (!cargoPlayer.ready) return;
+    if (!rulesSeen()) { showRules(); return; }
+    beginGame();
   }
 
   function spawn() {
@@ -378,7 +400,7 @@ import { cargoPlayer } from './player.js';
     ovAction = action;
     overlay.classList.add("show");
   }
-  function hideOverlay() { overlay.classList.remove("show"); }
+  function hideOverlay() { overlay.classList.remove("show", "rules-mode"); }
   ovBtn.addEventListener("click", () => ovAction());
 
 

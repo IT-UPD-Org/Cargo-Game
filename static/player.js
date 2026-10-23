@@ -85,6 +85,7 @@ export const cargoPlayer = {};
     get firstPlayCode() { return player?.firstPlayCode; },
     get firstPlayScore() { return player?.firstPlayScore; },
     get highestScore() { return player?.highestScore; },
+    get playCount() { return player?.playCount; },
     get ready() { return !!player || !!pendingUsername; },
     async save(scores, playId) {
       if (!player && pendingUsername) {
