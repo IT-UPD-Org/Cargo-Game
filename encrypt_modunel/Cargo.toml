@@ -18,7 +18,7 @@ md5 = "0.7"
 base64 = "0.22"
 serde_json = "1"
 js-sys = "=0.3.77"
-web-sys = { version = "=0.3.77", features = ["Window", "Document", "Element", "HtmlCanvasElement", "CanvasRenderingContext2d", "Navigator", "Screen", "Location"] }
+web-sys = { version = "=0.3.77", features = ["Window", "Document", "Element", "HtmlCanvasElement", "CanvasRenderingContext2d", "Navigator", "Screen", "Location", "Storage", "WebGlRenderingContext", "TextMetrics"] }
 wasm-bindgen-futures = "=0.4.50"
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 

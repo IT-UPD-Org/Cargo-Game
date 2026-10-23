@@ -6,7 +6,69 @@ use aes_gcm::{Aes256Gcm, KeyInit, aead::{Aead, Payload}, Nonce};
 include!(concat!(env!("OUT_DIR"), "/key.rs"));
 include!(concat!(env!("OUT_DIR"), "/response.rs"));
 
-fn browser_id() -> Result<String, JsValue> {
+const SEED_KEY: &str = "cargoDeviceSeed";
+
+thread_local! {
+    static BROWSER_ID: std::cell::RefCell<Option<String>> = std::cell::RefCell::new(None);
+}
+
+// Random per-device value. Identical phones share every hardware signal, so this is what tells them apart.
+// If storage is blocked or purged we still use a fresh in-memory seed so devices can never collide;
+// the server's login cookie then restores the player.
+fn device_seed(window: &web_sys::Window) -> String {
+    let storage = window.local_storage().ok().flatten();
+    if let Some(store) = &storage {
+        if let Ok(Some(saved)) = store.get_item(SEED_KEY) {
+            if saved.len() == 32 && saved.bytes().all(|b| b.is_ascii_hexdigit()) { return saved; }
+        }
+    }
+    let mut bytes = [0u8; 16];
+    OsRng.fill_bytes(&mut bytes);
+    let seed: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    if let Some(store) = &storage { let _ = store.set_item(SEED_KEY, &seed); }
+    seed
+}
+
+fn webgl_signals(document: &web_sys::Document) -> String {
+    use web_sys::WebGlRenderingContext as Gl;
+    let gl = document.create_element("canvas").ok()
+        .and_then(|c| c.dyn_into::<web_sys::HtmlCanvasElement>().ok())
+        .and_then(|c| c.get_context("webgl").ok().flatten())
+        .and_then(|c| c.dyn_into::<Gl>().ok());
+    let Some(gl) = gl else { return "no-webgl".into() };
+    let text = |param: u32| gl.get_parameter(param).ok().and_then(|v| v.as_string()).unwrap_or_default();
+    let number = |param: u32| gl.get_parameter(param).ok().and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let mut parts = vec![text(Gl::VENDOR), text(Gl::RENDERER), text(Gl::VERSION), text(Gl::SHADING_LANGUAGE_VERSION), number(Gl::MAX_TEXTURE_SIZE).to_string()];
+    if gl.get_extension("WEBGL_debug_renderer_info").ok().flatten().is_some() {
+        parts.push(text(0x9245)); // UNMASKED_VENDOR_WEBGL
+        parts.push(text(0x9246)); // UNMASKED_RENDERER_WEBGL
+    }
+    parts.join("|")
+}
+
+// A font counts as installed when it changes the measured width against any generic fallback.
+fn font_signals(ctx: &web_sys::CanvasRenderingContext2d) -> String {
+    const FONTS: [&str; 16] = ["Arial", "Helvetica", "Times New Roman", "Courier New", "Georgia", "Verdana", "Trebuchet MS", "Impact",
+        "Comic Sans MS", "Tahoma", "Roboto", "Noto Sans", "Segoe UI", "Menlo", "Ubuntu", "Apple Color Emoji"];
+    const BASES: [&str; 3] = ["monospace", "sans-serif", "serif"];
+    let sample = "mmMwWLliI0fiflO&1";
+    let width = |font: &str| -> f64 {
+        ctx.set_font(font);
+        ctx.measure_text(sample).map(|m| m.width()).unwrap_or(0.0)
+    };
+    let base: Vec<f64> = BASES.iter().map(|b| width(&format!("72px {b}"))).collect();
+    FONTS.iter().map(|f| {
+        let found = BASES.iter().zip(&base).any(|(b, w)| (width(&format!("72px '{f}',{b}")) - w).abs() > 0.01);
+        if found { '1' } else { '0' }
+    }).collect()
+}
+
+fn math_signals() -> String {
+    format!("{:?}|{:?}|{:?}|{:?}|{:?}", js_sys::Math::acos(0.123456789), js_sys::Math::sinh(1.1), js_sys::Math::tan(-1e300),
+        js_sys::Math::expm1(1.0), js_sys::Math::cbrt(100.0))
+}
+
+fn compute_browser_id() -> Result<String, JsValue> {
     let window = web_sys::window().ok_or_else(|| JsValue::from_str("Browser required"))?;
     let document = window.document().ok_or_else(|| JsValue::from_str("Document required"))?;
     let canvas = document.create_element("canvas")?.dyn_into::<web_sys::HtmlCanvasElement>()?;
@@ -18,14 +80,27 @@ fn browser_id() -> Result<String, JsValue> {
     ctx.set_font("18px sans-serif");
     ctx.set_fill_style_str("#e7bd66");
     ctx.fill_text("Xếp hàng lên tàu ⚓", 8.0, 35.0)?;
+    let canvas_data = canvas.to_data_url()?;
     let navigator = window.navigator();
     let options = js_sys::Intl::DateTimeFormat::new(&js_sys::Array::new(), &js_sys::Object::new()).resolved_options();
     let zone = js_sys::Reflect::get(&options, &JsValue::from_str("timeZone"))?.as_string().unwrap_or_default();
+    // Only signals that stay the same for a given device. Screen size and media-query preferences are left out on
+    // purpose: an external monitor, rotation or an accessibility setting would silently change the ID.
     let signals = serde_json::json!([
-        canvas.to_data_url()?, navigator.language(), navigator.platform()?,
-        navigator.hardware_concurrency() as u32, window.screen()?.color_depth()?, zone
+        device_seed(&window), canvas_data, webgl_signals(&document), font_signals(&ctx), math_signals(),
+        navigator.language(), String::from(navigator.languages().join(",")), navigator.platform()?,
+        js_sys::Reflect::get(&navigator, &JsValue::from_str("vendor"))?.as_string().unwrap_or_default(),
+        navigator.hardware_concurrency() as u32, navigator.max_touch_points(), window.screen()?.color_depth()?, zone
     ]).to_string();
     Ok(format!("{:x}", md5::compute(signals)))
+}
+
+// Computed once per page: WebGL contexts are limited and the canvas work is wasted on later requests.
+fn browser_id() -> Result<String, JsValue> {
+    if let Some(id) = BROWSER_ID.with(|cell| cell.borrow().clone()) { return Ok(id); }
+    let id = compute_browser_id()?;
+    BROWSER_ID.with(|cell| *cell.borrow_mut() = Some(id.clone()));
+    Ok(id)
 }
 
 // Versioned binary envelope: version | RSA key length | RSA key | IV | GCM payload.

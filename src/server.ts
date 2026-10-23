@@ -121,7 +121,13 @@ app.post('/api/player', route(async (req, res) => {
     httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production',
     maxAge: 365 * 24 * 60 * 60 * 1000, path: '/'
   });
-  const existing = await players.findOneAndUpdate({ browserId }, { $set: { sessionId: hash(token) } }, { returnDocument: 'after' });
+  // The login cookie is the strongest proof of identity, and it lets players created under the old
+  // fingerprint (or whose local seed was purged) keep their record while moving to the new browser ID.
+  const cookieId = identity(req);
+  let existing = cookieId
+    ? await players.findOneAndUpdate({ sessionId: cookieId }, { $set: { sessionId: hash(token), browserId } }, { returnDocument: 'after' })
+    : null;
+  if (!existing) existing = await players.findOneAndUpdate({ browserId }, { $set: { sessionId: hash(token) } }, { returnDocument: 'after' });
   if (existing) { setSession(); res.json({ player: { ...publicPlayer(existing), playCount: await plays.countDocuments({ playerId: existing._id }) } }); return; }
   if (username === undefined) { res.json({ player: null }); return; }
   if (typeof username !== 'string' || !/^[\p{L}\p{N}_ .-]{2,24}$/u.test(username.trim()) ||
