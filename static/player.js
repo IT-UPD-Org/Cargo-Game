@@ -1,4 +1,5 @@
 import { sendApi } from './send-api.js';
+import { detectIncognito } from './detect-incognito.js';
 
 export const cargoPlayer = {};
 (() => {
@@ -86,7 +87,7 @@ export const cargoPlayer = {};
     get firstPlayScore() { return player?.firstPlayScore; },
     get highestScore() { return player?.highestScore; },
     get playCount() { return player?.playCount; },
-    get ready() { return !!player || !!pendingUsername; },
+    get ready() { return !blockedPrivate && (!!player || !!pendingUsername); },
     async save(scores, playId) {
       if (!player && pendingUsername) {
         try {
@@ -107,8 +108,26 @@ export const cargoPlayer = {};
       return result.score;
     }
   }));
-  api('/api/player', {}).then(({ player }) => {
-    if (player) display(player);
-    else { form.hidden = false; start.hidden = true; status.textContent = 'Nhập tên để bắt đầu chơi.'; }
-  }).catch(error => { form.hidden = false; start.hidden = true; status.textContent = error.message; });
+  // Private/incognito windows lose localStorage when closed, so they cannot keep an account. Block them up front.
+  let blockedPrivate = false;
+  function blockPrivate() {
+    blockedPrivate = true;
+    form.hidden = true;
+    start.hidden = true;
+    start.disabled = true;
+    nameButton.hidden = true;
+    codePanel.hidden = true;
+    status.textContent = 'Không thể chơi ở chế độ ẩn danh. Hãy mở trang này trong cửa sổ thường.';
+  }
+  async function boot() {
+    let isPrivate = false;
+    try { isPrivate = (await detectIncognito()).isPrivate === true; } catch (_) { /* cannot tell: do not block */ }
+    if (isPrivate) { blockPrivate(); return; }
+    try {
+      const { player } = await api('/api/player', {});
+      if (player) display(player);
+      else { form.hidden = false; start.hidden = true; status.textContent = 'Nhập tên để bắt đầu chơi.'; }
+    } catch (error) { form.hidden = false; start.hidden = true; status.textContent = error.message; }
+  }
+  void boot();
 })();
